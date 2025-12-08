@@ -130,10 +130,12 @@ class RescaleActionSpace(gym.ActionWrapper):
 
 class PreDefinedDiscreteActions(gym.ActionWrapper):
     """
-    Wrapper that defines a discrete action space with adaptive actions.
+    Wrapper that defines a discrete action space with adaptive actions
+    (based on the then-statement of if-then-else rules).
 
-    Base version with 6 actions for GT-BES-RE-DEMAND env.
+    Basic version with 6 actions for standard GT-BES-RE-Demand env.
     """
+
     def __init__(self, env):
         super().__init__(env)
         assert env.unwrapped.action_space.shape[0] == 2, 'Action space not fitting to this pre-defined action wrapper!'
@@ -143,7 +145,7 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
         self.action_space = gym.spaces.Discrete(6)
         self.num_gts = len(self.env.get_wrapper_attr('gts'))
 
-        self.bes = self.env.unwrapped.storage_dict
+        self.bes = self.env.unwrapped.storage
 
         self.avg_gt_max = 35  # in MW
         self.gt_tolerance = 0.00  # Increase GT action on [0,1] scale by this amount to compensate for amb. conditions
@@ -179,7 +181,7 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
             if diff >= 0:  # If no surplus REs
                 pass  # Leave BES idle
             else:  # Surplus REs
-                bes_action = max(diff / self.bes['max_charge_rate'], -1.0)
+                bes_action = max(diff / self.bes.max_charge_rate, -1.0)
                 continuous_action[-1] = bes_action  # Charge BES
 
         # Meet deficient power supply with BES (no GT usage)
@@ -187,7 +189,7 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
             if diff <= 0:  # If no deficiency
                 pass  # Leave BES idle
             else:
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
                 continuous_action[-1] = bes_action
 
         # Meet deficient power supply with GT (no BES usage)
@@ -205,10 +207,10 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
             else:
                 # Note: This doesn't account for insufficient SOC
                 # First, use as much BES power as possible/necessary
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
                 continuous_action[-1] = bes_action
                 # Meet difference from GT
-                bes_flow = bes_action * self.bes['max_discharge_rate'] * self.bes['discharge_eff']
+                bes_flow = bes_action * self.bes.max_discharge_rate * self.bes.discharge_eff
                 gt_action = min(((diff - bes_flow) / self.avg_gt_max) + self.gt_tolerance, 1.0)
                 continuous_action[0] = max(0, gt_action)
 
@@ -223,7 +225,7 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
                 continuous_action[0] = gt_action
 
                 surplus_gt_power = (gt_action - gt_action_needed) * self.avg_gt_max
-                bes_action = max(-surplus_gt_power / self.bes['max_charge_rate'], -1.0)
+                bes_action = max(-surplus_gt_power / self.bes.max_charge_rate, -1.0)
                 continuous_action[-1] = bes_action
 
         # Correct for GT startup (less power produced due to ramping)
@@ -240,12 +242,21 @@ class PreDefinedDiscreteActions(gym.ActionWrapper):
 
         return continuous_action.astype(self.env.get_wrapper_attr('precision')['float'])
 
+    def reset(self, **kwargs):
+        """
+        Resets the environment and updates 'self.bes'.
+        """
+        obs = self.env.reset(**kwargs)  # Reset the underlying environment
+        self.bes = self.env.unwrapped.storage  # Update BES  after reset
+        return obs
+
 
 class ABPreDefinedDiscreteActions(gym.ActionWrapper):
     """
-    Wrapper that defines a discrete action space with adaptive actions.
+    Wrapper that defines a discrete action space with adaptive actions
+    (based on the then-statement of if-then-else rules).
 
-    P2G version with 8 actions for GT-BES-P2G-RE-DEMAND env.
+    P2G version with XXX actions for GT-BES-P2G-RE-DEMAND env.
     """
 
     def __init__(self, env):
@@ -257,8 +268,8 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
         self.action_space = gym.spaces.Discrete(8)
         self.num_gts = len(self.env.get_wrapper_attr('gts'))
 
-        self.bes = self.env.unwrapped.storage_dict
-        self.p2g_dict = self.env.unwrapped.p2g_dict
+        self.bes = self.env.unwrapped.storage
+        self.p2g = self.env.unwrapped.p2g
 
         self.avg_gt_max = 35  # in MW
         self.gt_tolerance = 0.00  # Increase GT action on [0,1] scale by this amount to compensate for amb. conditions
@@ -299,7 +310,7 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
             if diff >= 0:  # If no surplus REs
                 pass  # Leave BES idle
             else:  # Surplus REs
-                bes_action = max(diff / self.bes['max_charge_rate'], -1.0)
+                bes_action = max(diff / self.bes.max_charge_rate, -1.0)
                 continuous_action[2] = bes_action  # Charge BES
 
         # Operate P2G with REs (as much as possible, no GT or BES usage)
@@ -312,7 +323,7 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
             if diff >= 0:  # If no surplus REs
                 pass  # Leave P2G idle
             else:  # Surplus REs
-                p2g_action = min(abs(diff) / self.p2g_dict['max_charge_rate'], 1.0)
+                p2g_action = min(abs(diff) / self.p2g.max_charge_rate, 1.0)
                 continuous_action[1] = p2g_action  # Charge BES
 
             p2g_action = 1.0
@@ -323,7 +334,7 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
             if diff <= 0:  # If no deficiency
                 pass  # Leave BES idle
             else:
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
                 continuous_action[2] = bes_action
 
         # Meet deficient power supply with GT (no BES usage)
@@ -341,10 +352,10 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
             else:
                 # Note: This doesn't account for insufficient SOC
                 # First, use as much BES power as possible/necessary
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
                 continuous_action[2] = bes_action
                 # Meet difference from GT
-                bes_flow = bes_action * self.bes['max_discharge_rate'] * self.bes['discharge_eff']
+                bes_flow = bes_action * self.bes.max_discharge_rate * self.bes.discharge_eff
                 gt_action = min(((diff - bes_flow) / self.avg_gt_max) + self.gt_tolerance, 1.0)
                 continuous_action[0] = max(0, gt_action)
 
@@ -362,12 +373,22 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
 
         return continuous_action.astype(self.env.get_wrapper_attr('precision')['float'])
 
+    def reset(self, **kwargs):
+        """
+        Resets the environment and updates 'self.bes' and 'self.p2g'.
+        """
+        obs = self.env.reset(**kwargs)  # Reset the underlying environment
+        self.bes = self.env.unwrapped.storage  # Update BES after reset
+        self.p2g = self.env.unwrapped.p2g  # Update P2G after reset
+        return obs
+
 
 class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
     """
     Wrapper that defines a discrete action space with adaptive actions
+    (based on the then-statement of if-then-else rules).
 
-    P2G version with 5 actions for GT-BES-P2G-RE-DEMAND env.
+    P2G version with XXX actions for GT-BES-P2G-RE-DEMAND env.
     """
 
     def __init__(self, env):
@@ -379,8 +400,8 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
         self.action_space = gym.spaces.Discrete(5)
         self.num_gts = len(self.env.get_wrapper_attr('gts'))
 
-        self.bes = self.env.unwrapped.storage_dict
-        self.p2g_dict = self.env.unwrapped.p2g_dict
+        self.bes = self.env.unwrapped.storage
+        self.p2g = self.env.unwrapped.p2g
 
         self.avg_gt_max = 35  # in MW
         self.gt_tolerance = 0.00  # Increase GT action on [0,1] scale by this amount to compensate for amb. conditions
@@ -416,13 +437,13 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
         # Charge SURPLUS into BES (priority) and P2G
         elif action == 1:
             if diff <= 0:  # enough re power available
-                if self.bes['max_soc'] > self.env.unwrapped.storage.soc:  # charge BES if not full already
-                    bes_action = max(diff / self.bes['max_charge_rate'], -1.0)
-                    new_diff = diff - bes_action * self.bes['max_charge_rate']
-                    if abs(new_diff) > self.p2g_dict['min_charge_rate']:  # REs left after BES charge
-                        p2g_action = min(abs(new_diff) / self.p2g_dict['max_charge_rate'], 1.0)
+                if self.bes.max_soc > self.env.unwrapped.storage.soc:  # charge BES if not full already
+                    bes_action = max(diff / self.bes.max_charge_rate, -1.0)
+                    new_diff = diff - bes_action * self.bes.max_charge_rate
+                    if abs(new_diff) > self.p2g.min_charge_rate:  # REs left after BES charge
+                        p2g_action = min(abs(new_diff) / self.p2g.max_charge_rate, 1.0)
                 else:  # charge P2G (note: could fall under min_charge_rate)
-                    p2g_action = min(abs(diff) / self.p2g_dict['max_charge_rate'], 1.0)
+                    p2g_action = min(abs(diff) / self.p2g.max_charge_rate, 1.0)
 
         # Charge ANYWAY into BES (priority) and P2G (note: BES priority incorporated into env already)
         elif action == 2:
@@ -434,7 +455,7 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
             if diff <= 0:  # If no deficiency
                 pass  # Leave BES idle
             else:
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
 
         # Meet deficient power supply with BES + GT (Prioritizing BES)
         elif action == 4:
@@ -443,9 +464,9 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
             else:
                 # Note: This doesn't account for insufficient SOC
                 # First, use as much BES power as possible/necessary
-                bes_action = min(diff / self.bes['max_discharge_rate'] / self.bes['discharge_eff'], 1.0)
+                bes_action = min(diff / self.bes.max_discharge_rate / self.bes.discharge_eff, 1.0)
                 # Meet difference from GT
-                bes_flow = bes_action * self.bes['max_discharge_rate'] * self.bes['discharge_eff']
+                bes_flow = bes_action * self.bes.max_discharge_rate * self.bes.discharge_eff
                 gt_action = min(((diff - bes_flow) / self.avg_gt_max) + self.gt_tolerance, 1.0)
                 gt_action = max(0, gt_action)
 
@@ -463,6 +484,15 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
         continuous_action = np.array([gt_action, p2g_action, bes_action])
 
         return continuous_action.astype(self.env.get_wrapper_attr('precision')['float'])
+
+    def reset(self, **kwargs):
+        """
+        Resets the environment and updates 'self.bes' and 'self.p2g'.
+        """
+        obs = self.env.reset(**kwargs)  # Reset the underlying environment
+        self.bes = self.env.unwrapped.storage  # Update BES after reset
+        self.p2g = self.env.unwrapped.p2g  # Update P2G after reset
+        return obs
 
 
 class P2GSOCPenalty(gym.RewardWrapper):
