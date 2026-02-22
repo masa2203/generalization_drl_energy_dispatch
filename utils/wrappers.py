@@ -256,7 +256,7 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
     Wrapper that defines a discrete action space with adaptive actions
     (based on the then-statement of if-then-else rules).
 
-    P2G version with XXX actions for GT-BES-P2G-RE-DEMAND env.
+    P2G version with 8 actions for GT-BES-P2G-RE-DEMAND env.
     """
 
     def __init__(self, env):
@@ -324,10 +324,7 @@ class ABPreDefinedDiscreteActions(gym.ActionWrapper):
                 pass  # Leave P2G idle
             else:  # Surplus REs
                 p2g_action = min(abs(diff) / self.p2g.max_charge_rate, 1.0)
-                continuous_action[1] = p2g_action  # Charge BES
-
-            p2g_action = 1.0
-            continuous_action[1] = p2g_action  # Operate P2G
+                continuous_action[1] = p2g_action  # Operate P2G
 
         # Discharge BES
         elif action == 5:
@@ -388,7 +385,7 @@ class ABSmallPreDefinedDiscreteActions(gym.ActionWrapper):
     Wrapper that defines a discrete action space with adaptive actions
     (based on the then-statement of if-then-else rules).
 
-    P2G version with XXX actions for GT-BES-P2G-RE-DEMAND env.
+    P2G version with 5 actions for GT-BES-P2G-RE-DEMAND env.
     """
 
     def __init__(self, env):
